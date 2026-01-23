@@ -15,7 +15,7 @@
 # Set the initial shell so we can determine extra options.
 SHELL := /usr/bin/env bash -ueo pipefail
 DEBUG_LOGGING ?= $(shell if [[ "${GITHUB_ACTIONS}" == "true" ]] && [[ -n "${RUNNER_DEBUG}" || "${ACTIONS_RUNNER_DEBUG}" == "true" || "${ACTIONS_STEP_DEBUG}" == "true" ]]; then echo "true"; else echo ""; fi)
-BASH_OPTIONS ?= $(shell if [ "$(DEBUG_LOGGING)" == "true" ]; then echo "-x"; else echo ""; fi)
+BASH_OPTIONS := $(shell if [ "$(DEBUG_LOGGING)" == "true" ]; then echo "-x"; else echo ""; fi)
 
 # Add extra options for debugging.
 SHELL := /usr/bin/env bash -ueo pipefail $(BASH_OPTIONS)
@@ -23,20 +23,25 @@ SHELL := /usr/bin/env bash -ueo pipefail $(BASH_OPTIONS)
 uname_s := $(shell uname -s)
 uname_m := $(shell uname -m)
 arch.x86_64 := amd64
-arch = $(arch.$(uname_m))
+arch.aarch64 := arm64
+arch.arm64 := arm64
+arch := $(arch.$(uname_m))
 kernel.Linux := linux
-kernel = $(kernel.$(uname_s))
+kernel.Darwin := darwin
+kernel := $(kernel.$(uname_s))
 
 OUTPUT_FORMAT ?= $(shell if [ "${GITHUB_ACTIONS}" == "true" ]; then echo "github"; else echo ""; fi)
-REPO_ROOT = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-REPO_NAME = $(shell basename "$(REPO_ROOT)")
+REPO_ROOT := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+REPO_NAME := $(shell basename "$(REPO_ROOT)")
 
 # renovate: datasource=github-releases depName=aquaproj/aqua versioning=loose
-AQUA_VERSION ?= v2.55.0
-AQUA_REPO ?= github.com/aquaproj/aqua
-AQUA_CHECKSUM.Linux.x86_64 = cb7780962ca651c4e025a027b7bfc82c010af25c5c150fe89ad72f4058d46540
-AQUA_CHECKSUM ?= $(AQUA_CHECKSUM.$(uname_s).$(uname_m))
-AQUA_URL = https://$(AQUA_REPO)/releases/download/$(AQUA_VERSION)/aqua_$(kernel)_$(arch).tar.gz
+AQUA_VERSION ?= v2.56.2
+AQUA_REPO := github.com/aquaproj/aqua
+AQUA_CHECKSUM.linux.amd64 := 6ecff5d9f79ed31d3aeab826a15023dce577806a85b563d71975503418c2b34b
+AQUA_CHECKSUM.linux.arm64 := 158c501f3aa5b97b54acfb3c8e8438cabb3f931929da8265c564badcf872e596
+AQUA_CHECKSUM.darwin.arm64 := a93db5795ca73d878c8bae612cb08c67e0130b1c0926c995fd84fdde08ccc1aa
+AQUA_CHECKSUM ?= $(AQUA_CHECKSUM.$(kernel).$(arch))
+AQUA_URL := https://$(AQUA_REPO)/releases/download/$(AQUA_VERSION)/aqua_$(kernel)_$(arch).tar.gz
 export AQUA_ROOT_DIR = $(REPO_ROOT)/.aqua
 
 # Ensure that aqua and aqua installed tools are in the PATH.
@@ -45,11 +50,10 @@ export PATH := $(REPO_ROOT)/.bin/aqua-$(AQUA_VERSION):$(AQUA_ROOT_DIR)/bin:$(PAT
 # We want GNU versions of tools so prefer them if present.
 GREP := $(shell command -v ggrep 2>/dev/null || command -v grep 2>/dev/null)
 AWK := $(shell command -v gawk 2>/dev/null || command -v awk 2>/dev/null)
-MKTEMP := $(shell command -v gmktemp 2>/dev/null || command -v mktemp 3>/dev/null)
+MKTEMP := $(shell command -v gmktemp 2>/dev/null || command -v mktemp 2>/dev/null)
 
 BENCHTIME ?= 1s
 TESTCOUNT ?= 1
-TESTTIMEOUT ?= 10m
 
 # The help command prints targets in groups. Help documentation in the Makefile
 # uses comments with double hash marks (##). Documentation is printed by the
@@ -71,7 +75,7 @@ help: ## Print all Makefile targets (this message).
 	echo ""; \
 	normal=""; \
 	cyan=""; \
-	if command -v tput >/dev/null 3>&1; then \
+	if command -v tput >/dev/null 2>&1; then \
 		if [ -t 1 ]; then \
 			normal=$$(tput sgr0); \
 			cyan=$$(tput setaf 6); \
@@ -146,7 +150,7 @@ node_modules/.installed: package-lock.json
 	mkdir -p .bin/aqua-$(AQUA_VERSION); \
 	tempfile=$$($(MKTEMP) --suffix=".aqua-$(AQUA_VERSION).tar.gz"); \
 	curl -sSLo "$${tempfile}" "$(AQUA_URL)"; \
-	echo "$(AQUA_CHECKSUM)  $${tempfile}" | sha256sum -c -; \
+	echo "$(AQUA_CHECKSUM)  $${tempfile}" | shasum -a 256 -c; \
 	tar -x -C .bin/aqua-$(AQUA_VERSION) -f "$${tempfile}"
 
 $(AQUA_ROOT_DIR)/.installed: .aqua.yaml .bin/aqua-$(AQUA_VERSION)/aqua
@@ -156,8 +160,8 @@ $(AQUA_ROOT_DIR)/.installed: .aqua.yaml .bin/aqua-$(AQUA_VERSION)/aqua
 		loglevel="debug"; \
 	fi; \
 	$(REPO_ROOT)/.bin/aqua-$(AQUA_VERSION)/aqua \
+		--config "$(REPO_ROOT)/.aqua.yaml" \
 		--log-level "$${loglevel}" \
-		--config .aqua.yaml \
 		install; \
 	touch $@
 
@@ -191,7 +195,6 @@ unit-test: ## Runs all unit tests.
 	go test \
 		$$extraargs \
 		-mod=vendor \
-		-timeout=$(TESTTIMEOUT) \
 		-race \
 		-coverprofile=coverage.out \
 		-coverpkg=./... \
@@ -213,7 +216,6 @@ go-benchmark: ## Runs Go benchmarks.
 		$$extraargs \
 		-mod=vendor \
 		-bench=. \
-		-timeout=$(TESTTIMEOUT) \
 		-count=$(TESTCOUNT) \
 		-benchtime=$(BENCHTIME) \
 		-run='^#' \
@@ -292,6 +294,7 @@ license-headers: ## Update license headers.
 		>&2 echo "git user.name is required."; \
 		>&2 echo "Set it up using:"; \
 		>&2 echo "git config user.name \"John Doe\""; \
+		exit 1; \
 	fi; \
 	for filename in $${files}; do \
 		if ! ( head "$${filename}" | $(GREP) -iL "Copyright" > /dev/null ); then \
@@ -393,13 +396,10 @@ checkmake: $(AQUA_ROOT_DIR)/.installed ## Runs the checkmake linter.
 	if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
 		# TODO: Remove newline from the format string after updating checkmake. \
 		checkmake \
-			--config .checkmake.ini \
 			--format '::error file={{.FileName}},line={{.LineNumber}}::{{.Rule}}: {{.Violation}}'$$'\n' \
 			$${files}; \
 	else \
-		checkmake \
-			--config .checkmake.ini \
-			$${files}; \
+		checkmake $${files}; \
 	fi
 
 .PHONY: commitlint
@@ -427,7 +427,6 @@ commitlint: node_modules/.installed ## Run commitlint linter.
 		commitlint_to="HEAD"; \
 	fi; \
 	$(REPO_ROOT)/node_modules/.bin/commitlint \
-		--config commitlint.config.mjs \
 		--from "$${commitlint_from}" \
 		--to "$${commitlint_to}" \
 		--verbose \
@@ -484,60 +483,12 @@ markdownlint: node_modules/.installed $(AQUA_ROOT_DIR)/.installed ## Runs the ma
 	files=$$( \
 		git ls-files --deduplicate \
 			'*.md' \
-			':!:.github/pull_request_template.md' \
-			':!:.github/ISSUE_TEMPLATE/*.md' \
 			| while IFS='' read -r f; do [ -f "$${f}" ] && echo "$${f}" || true; done \
 	); \
 	if [ "$${files}" == "" ]; then \
 		exit 0; \
 	fi; \
-	if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
-		exit_code=0; \
-		while IFS="" read -r p && [ -n "$$p" ]; do \
-			file=$$(echo "$$p" | jq -cr '.fileName // empty'); \
-			line=$$(echo "$$p" | jq -cr '.lineNumber // empty'); \
-			endline=$${line}; \
-			message=$$(echo "$$p" | jq -cr '.ruleNames[0] + "/" + .ruleNames[1] + " " + .ruleDescription + " [Detail: \"" + .errorDetail + "\", Context: \"" + .errorContext + "\"]"'); \
-			exit_code=1; \
-			echo "::error file=$${file},line=$${line},endLine=$${endline}::$${message}"; \
-		done <<< "$$($(REPO_ROOT)/node_modules/.bin/markdownlint --config .markdownlint.yaml --dot --json $${files} 2>&1 | jq -c '.[]')"; \
-		if [ "$${exit_code}" != "0" ]; then \
-			exit "$${exit_code}"; \
-		fi; \
-	else \
-		$(REPO_ROOT)/node_modules/.bin/markdownlint \
-			--config .markdownlint.yaml \
-			--dot \
-			$${files}; \
-	fi; \
-	files=$$( \
-		git ls-files --deduplicate \
-			'.github/pull_request_template.md' \
-			'.github/ISSUE_TEMPLATE/*.md' \
-			| while IFS='' read -r f; do [ -f "$${f}" ] && echo "$${f}" || true; done \
-	); \
-	if [ "$${files}" == "" ]; then \
-		exit 0; \
-	fi; \
-	if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
-		exit_code=0; \
-		while IFS="" read -r p && [ -n "$$p" ]; do \
-			file=$$(echo "$$p" | jq -cr '.fileName // empty'); \
-			line=$$(echo "$$p" | jq -cr '.lineNumber // empty'); \
-			endline=$${line}; \
-			message=$$(echo "$$p" | jq -cr '.ruleNames[0] + "/" + .ruleNames[1] + " " + .ruleDescription + " [Detail: \"" + .errorDetail + "\", Context: \"" + .errorContext + "\"]"'); \
-			exit_code=1; \
-			echo "::error file=$${file},line=$${line},endLine=$${endline}::$${message}"; \
-		done <<< "$$($(REPO_ROOT)/node_modules/.bin/markdownlint --config .github/template.markdownlint.yaml --dot --json $${files} 2>&1 | jq -c '.[]')"; \
-		if [ "$${exit_code}" != "0" ]; then \
-			exit "$${exit_code}"; \
-		fi; \
-	else \
-		$(REPO_ROOT)/node_modules/.bin/markdownlint \
-			--config .github/template.markdownlint.yaml \
-			--dot \
-			$${files}; \
-	fi
+	$(REPO_ROOT)/node_modules/.bin/markdownlint-cli2 $${files}
 
 .PHONY: renovate-config-validator
 renovate-config-validator: node_modules/.installed ## Validate Renovate configuration.
@@ -560,23 +511,23 @@ textlint: node_modules/.installed $(AQUA_ROOT_DIR)/.installed ## Runs the textli
 	fi; \
 	if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
 		exit_code=0; \
+		textlint_out="$$($(REPO_ROOT)/node_modules/.bin/textlint --format json $${files} | jq -cr '.[]' || exit_code=\"$$?\")"; \
 		while IFS="" read -r p && [ -n "$$p" ]; do \
 			filePath=$$(echo "$$p" | jq -cr '.filePath // empty'); \
 			file=$$(realpath --relative-to="." "$${filePath}"); \
+			messages=$$(echo "$$p" | jq -cr '.messages[] // empty'); \
 			while IFS="" read -r m && [ -n "$$m" ]; do \
 				line=$$(echo "$$m" | jq -cr '.loc.start.line // empty'); \
 				endline=$$(echo "$$m" | jq -cr '.loc.end.line // empty'); \
 				col=$$(echo "$${m}" | jq -cr '.loc.start.column // empty'); \
 				endcol=$$(echo "$${m}" | jq -cr '.loc.end.column // empty'); \
 				message=$$(echo "$$m" | jq -cr '.message // empty'); \
-				exit_code=1; \
 				echo "::error file=$${file},line=$${line},endLine=$${endline},col=$${col},endColumn=$${endcol}::$${message}"; \
-			done <<<"$$(echo "$$p" | jq -cr '.messages[] // empty')"; \
-		done <<< "$$($(REPO_ROOT)/node_modules/.bin/textlint -c .textlintrc.yaml --format json $${files} 2>&1 | jq -c '.[]')"; \
+			done <<<"$${messages}"; \
+		done <<<"$${textlint_out}"; \
 		exit "$${exit_code}"; \
 	else \
 		$(REPO_ROOT)/node_modules/.bin/textlint \
-			--config .textlintrc.yaml \
 			$${files}; \
 	fi
 
@@ -596,9 +547,8 @@ yamllint: .venv/.installed ## Runs the yamllint linter.
 	if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
 		format="github"; \
 	fi; \
-	.venv/bin/yamllint \
+	$(REPO_ROOT)/.venv/bin/yamllint \
 		--strict \
-		--config-file .yamllint.yaml \
 		--format "$${format}" \
 		$${files}
 
@@ -617,15 +567,13 @@ zizmor: .venv/.installed ## Runs the zizmor linter.
 		exit 0; \
 	fi; \
 	if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
-		.venv/bin/zizmor \
-			--config .zizmor.yml \
+		$(REPO_ROOT)/.venv/bin/zizmor \
 			--quiet \
 			--pedantic \
 			--format sarif \
 			$${files} > zizmor.sarif.json; \
 	fi; \
-	.venv/bin/zizmor \
-		--config .zizmor.yml \
+	$(REPO_ROOT)/.venv/bin/zizmor \
 		--quiet \
 		--pedantic \
 		--format plain \

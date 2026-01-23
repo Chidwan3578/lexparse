@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Node is the structure for a single node in the parse tree.
@@ -36,33 +37,34 @@ func (n *Node[V]) String() string {
 }
 
 func fmtNode[V comparable](node *Node[V], lastRank []bool) string {
-	nodeStr := ""
+	var bldr strings.Builder
 
 	for i := range len(lastRank) - 1 {
 		if lastRank[i] {
-			nodeStr += "    "
+			bldr.WriteString("    ")
 		} else {
-			nodeStr += "│   "
+			bldr.WriteString("│   ")
 		}
 	}
 
 	if len(lastRank) > 0 {
 		if lastRank[len(lastRank)-1] {
-			nodeStr += "└── "
+			bldr.WriteString("└── ")
 		} else {
-			nodeStr += "├── "
+			bldr.WriteString("├── ")
 		}
 	}
 
-	nodeStr += fmt.Sprintf("%v (%v)\n", node.Value, node.Start)
+	fmt.Fprintf(&bldr, "%v (%v)\n", node.Value, node.Start)
+
 	for i, child := range node.Children {
 		newLastRank := make([]bool, len(lastRank)+1)
 		copy(newLastRank, lastRank)
 		newLastRank[len(lastRank)] = i == len(node.Children)-1
-		nodeStr += fmtNode(child, newLastRank)
+		bldr.WriteString(fmtNode(child, newLastRank))
 	}
 
-	return nodeStr
+	return bldr.String()
 }
 
 // ParseState is the state of the current parsing state machine. It defines the

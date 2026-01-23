@@ -23,6 +23,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: unit-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-test-matrix:
     name: unit tests
@@ -46,26 +50,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version: ${{ matrix.go-version }}
 
-      - name: unit tests
-        if: ${{ matrix.os != 'macos-latest' }}
-        run: |
-          make unit-test
-
-      - name: unit tests
-        if: ${{ matrix.os == 'macos-latest' }}
+      - name: Install GNU make on macOS
+        if: runner.os == 'macOS'
         run: |
           brew install \
             make \
             grep \
             gawk \
-            coreutils \
-            libyaml \
-            xz
-          gmake unit-test
+            coreutils
+
+      - name: unit tests (macOS)
+        if: runner.os == 'macOS'
+        run: gmake unit-test
+
+      - name: unit tests (Linux/Windows)
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+        run: make unit-test
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
