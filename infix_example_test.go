@@ -66,6 +66,17 @@ func (n *exprNode) precedence() int {
 	}
 }
 
+func (n *exprNode) String() string {
+	switch n.typ {
+	case nodeTypeNum:
+		return fmt.Sprintf("%g", n.num)
+	case nodeTypeOper:
+		return n.oper
+	default:
+		return fmt.Sprintf("UnknownNodeType(%d)", n.typ)
+	}
+}
+
 func tokenErr(err error, t *lexparse.Token) error {
 	return fmt.Errorf("%w: %q, line %d, column %d", err,
 		t.Value, t.Start.Line, t.Start.Column)
@@ -219,7 +230,7 @@ func Calculate(root *lexparse.Node[*exprNode]) (float64, error) {
 func Example_infixCalculator() {
 	r := strings.NewReader(`6.1 * ( 2.8 + 3.2 ) / 7.6 - 2.4`)
 
-	t, err := lexparse.LexParse(
+	tree, err := lexparse.LexParse(
 		context.Background(),
 		lexparse.NewScanningLexer(r),
 		lexparse.ParseStateFn(pratt),
@@ -228,12 +239,26 @@ func Example_infixCalculator() {
 		panic(err)
 	}
 
-	txt, err := Calculate(t)
+	// Print the expression tree.
+	fmt.Print(tree)
+
+	txt, err := Calculate(tree)
 	if err != nil {
 		panic(err)
 	}
 
+	// Print the evaluation result.
 	fmt.Print(txt)
 
-	// Output: 2.4157894736842107
+	// Output:
+	// - (1:27)
+	// ├── * (1:5)
+	// │   ├── 6.1 (1:1)
+	// │   └── / (1:21)
+	// │       ├── + (1:13)
+	// │       │   ├── 2.8 (1:9)
+	// │       │   └── 3.2 (1:15)
+	// │       └── 7.6 (1:23)
+	// └── 2.4 (1:29)
+	// 2.4157894736842107
 }
