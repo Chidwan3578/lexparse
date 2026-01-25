@@ -5,6 +5,12 @@ All notable changes will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- Refactored `CustomLexer` to add a new `CustomLexerContext` type that is passed
+  to state functions. This context provides access to the underlying `Lexer`
+  as well as additional helper methods for lexing.
+
 ## [0.2.0] - 2025-10-31
 
 - The EOF token emitted by the `Lexer` now includes the position where the EOF
