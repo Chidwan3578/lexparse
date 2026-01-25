@@ -158,35 +158,35 @@ func iniTokenErr(err error, t *lexparse.Token) error {
 }
 
 // parseINIInit is the initial parser state for INI files.
-func parseINIInit(_ context.Context, p *lexparse.Parser[*iniNode]) error {
+func parseINIInit(ctx *lexparse.ParserContext[*iniNode]) error {
 	// Replace the root node with a new root node.
-	_ = p.Replace(&iniNode{
+	_ = ctx.Replace(&iniNode{
 		typ: iniNodeTypeRoot,
 	})
 
 	// Create the empty section node for the global section.
-	_ = p.Push(&iniNode{
+	_ = ctx.Push(&iniNode{
 		typ:         iniNodeTypeSection,
 		sectionName: "",
 	})
 
-	p.PushState(lexparse.ParseStateFn(parseINI))
+	ctx.PushState(lexparse.ParseStateFn(parseINI))
 
 	return nil
 }
 
 // parseINI parses the top-level structure of an INI file.
-func parseINI(ctx context.Context, p *lexparse.Parser[*iniNode]) error {
-	t := p.Peek(ctx)
+func parseINI(ctx *lexparse.ParserContext[*iniNode]) error {
+	t := ctx.Peek()
 
 	switch t.Type {
 	case lexINITypeOper:
-		p.PushState(lexparse.ParseStateFn(parseSection))
+		ctx.PushState(lexparse.ParseStateFn(parseSection))
 	case lexINITypeIden:
-		p.PushState(lexparse.ParseStateFn(parseProperty))
+		ctx.PushState(lexparse.ParseStateFn(parseProperty))
 	case lexINITypeComment:
-		_ = p.Next(ctx) // Discard comment
-		p.PushState(lexparse.ParseStateFn(parseINI))
+		_ = ctx.Next() // Discard comment
+		ctx.PushState(lexparse.ParseStateFn(parseINI))
 	case lexparse.TokenTypeEOF:
 		return nil
 	default:
@@ -197,18 +197,18 @@ func parseINI(ctx context.Context, p *lexparse.Parser[*iniNode]) error {
 }
 
 // parseSection parses a section header.
-func parseSection(ctx context.Context, parser *lexparse.Parser[*iniNode]) error {
-	openBracket := parser.Next(ctx)
+func parseSection(ctx *lexparse.ParserContext[*iniNode]) error {
+	openBracket := ctx.Next()
 	if openBracket.Type != lexINITypeOper || openBracket.Value != "[" {
 		return iniTokenErr(errINIIdentifier, openBracket)
 	}
 
-	sectionToken := parser.Next(ctx)
+	sectionToken := ctx.Next()
 	if sectionToken.Type != lexINITypeIden {
 		return iniTokenErr(errINIIdentifier, sectionToken)
 	}
 
-	closeBracket := parser.Next(ctx)
+	closeBracket := ctx.Next()
 	if closeBracket.Type != lexINITypeOper || closeBracket.Value != "]" {
 		return iniTokenErr(errINIIdentifier, closeBracket)
 	}
@@ -222,20 +222,20 @@ func parseSection(ctx context.Context, parser *lexparse.Parser[*iniNode]) error 
 
 	// Create a new node for the section and push it onto the parse tree.
 	// The current node is now the new section node.
-	_ = parser.Climb()
-	_ = parser.Push(&iniNode{
+	_ = ctx.Climb()
+	_ = ctx.Push(&iniNode{
 		typ:         iniNodeTypeSection,
 		sectionName: sectionName,
 	})
 
-	parser.PushState(lexparse.ParseStateFn(parseINI))
+	ctx.PushState(lexparse.ParseStateFn(parseINI))
 
 	return nil
 }
 
 // parseProperty parses a property key-value pair.
-func parseProperty(ctx context.Context, parser *lexparse.Parser[*iniNode]) error {
-	keyToken := parser.Next(ctx)
+func parseProperty(ctx *lexparse.ParserContext[*iniNode]) error {
+	keyToken := ctx.Next()
 	if keyToken.Type != lexINITypeIden {
 		return iniTokenErr(errINIIdentifier, keyToken)
 	}
@@ -247,24 +247,24 @@ func parseProperty(ctx context.Context, parser *lexparse.Parser[*iniNode]) error
 		return iniTokenErr(errINIPropertyName, keyToken)
 	}
 
-	eqToken := parser.Next(ctx)
+	eqToken := ctx.Next()
 	if eqToken.Type != lexINITypeOper || eqToken.Value != "=" {
 		return iniTokenErr(errINIIdentifier, eqToken)
 	}
 
-	valueToken := parser.Next(ctx)
+	valueToken := ctx.Next()
 	if valueToken.Type != lexINITypeValue {
 		return iniTokenErr(errINIIdentifier, valueToken)
 	}
 
 	// Create a new node for the property and add it to the current section.
-	parser.Node(&iniNode{
+	ctx.Node(&iniNode{
 		typ:           iniNodeTypeProperty,
 		propertyName:  keyName,
 		propertyValue: strings.TrimSpace(valueToken.Value),
 	})
 
-	parser.PushState(lexparse.ParseStateFn(parseINI))
+	ctx.PushState(lexparse.ParseStateFn(parseINI))
 
 	return nil
 }

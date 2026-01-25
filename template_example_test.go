@@ -187,27 +187,27 @@ func lexSymbol(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
 }
 
 // parseRoot updates the root node to be a sequence block.
-func parseRoot(_ context.Context, p *lexparse.Parser[*tmplNode]) error {
-	p.Replace(&tmplNode{
+func parseRoot(ctx *lexparse.ParserContext[*tmplNode]) error {
+	ctx.Replace(&tmplNode{
 		typ: nodeTypeSeq,
 	})
 
-	p.PushState(lexparse.ParseStateFn(parseSeq))
+	ctx.PushState(lexparse.ParseStateFn(parseSeq))
 
 	return nil
 }
 
 // parseSeq delegates to another parse function based on token type.
-func parseSeq(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	token := p.Peek(ctx)
+func parseSeq(ctx *lexparse.ParserContext[*tmplNode]) error {
+	token := ctx.Peek()
 
 	switch token.Type {
 	case lexTypeText:
-		p.PushState(lexparse.ParseStateFn(parseText))
+		ctx.PushState(lexparse.ParseStateFn(parseText))
 	case lexTypeVarStart:
-		p.PushState(lexparse.ParseStateFn(parseVarStart))
+		ctx.PushState(lexparse.ParseStateFn(parseVarStart))
 	case lexTypeBlockStart:
-		p.PushState(lexparse.ParseStateFn(parseBlockStart))
+		ctx.PushState(lexparse.ParseStateFn(parseBlockStart))
 	default:
 	}
 
@@ -215,27 +215,27 @@ func parseSeq(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseText handles normal text.
-func parseText(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	token := p.Next(ctx)
+func parseText(ctx *lexparse.ParserContext[*tmplNode]) error {
+	token := ctx.Next()
 
 	// Emit a text node.
-	p.Node(&tmplNode{
+	ctx.Node(&tmplNode{
 		typ:  nodeTypeText,
 		text: token.Value,
 	})
 
 	// Return to handling a sequence.
-	p.PushState(lexparse.ParseStateFn(parseSeq))
+	ctx.PushState(lexparse.ParseStateFn(parseSeq))
 
 	return nil
 }
 
 // parseVarStart handles var start (e.g. '{{').
-func parseVarStart(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
+func parseVarStart(ctx *lexparse.ParserContext[*tmplNode]) error {
 	// Consume the var start token.
-	_ = p.Next(ctx)
+	_ = ctx.Next()
 
-	p.PushState(
+	ctx.PushState(
 		lexparse.ParseStateFn(parseVar),
 		lexparse.ParseStateFn(parseVarEnd),
 	)
@@ -244,8 +244,8 @@ func parseVarStart(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseVar handles replacement variables (e.g. the 'var' in {{ var }}).
-func parseVar(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	switch token := p.Next(ctx); token.Type {
+func parseVar(ctx *lexparse.ParserContext[*tmplNode]) error {
+	switch token := ctx.Next(); token.Type {
 	case lexTypeIdentifier:
 		// Validate the variable name.
 		if !idenRegexp.MatchString(token.Value) {
@@ -253,7 +253,7 @@ func parseVar(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 		}
 
 		// Add a variable node.
-		_ = p.Node(&tmplNode{
+		_ = ctx.Node(&tmplNode{
 			typ:     nodeTypeVar,
 			varName: token.Value,
 		})
@@ -267,11 +267,11 @@ func parseVar(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseVarEnd handles var end (e.g. '}}').
-func parseVarEnd(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	switch token := p.Next(ctx); token.Type {
+func parseVarEnd(ctx *lexparse.ParserContext[*tmplNode]) error {
+	switch token := ctx.Next(); token.Type {
 	case lexTypeVarEnd:
 		// Go back to parsing template init state.
-		p.PushState(lexparse.ParseStateFn(parseSeq))
+		ctx.PushState(lexparse.ParseStateFn(parseSeq))
 		return nil
 	case lexparse.TokenTypeEOF:
 		return fmt.Errorf("%w: unclosed variable, expected %q", io.ErrUnexpectedEOF, tokenVarEnd)
@@ -281,19 +281,19 @@ func parseVarEnd(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseBranch handles the start if conditional block.
-func parseBranch(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	switch token := p.Next(ctx); token.Type {
+func parseBranch(ctx *lexparse.ParserContext[*tmplNode]) error {
+	switch token := ctx.Next(); token.Type {
 	case lexTypeIdentifier:
 		if token.Value != tokenIf {
 			return fmt.Errorf("%w: expected %q", errIdentifier, tokenIf)
 		}
 
 		// Add a branch node.
-		_ = p.Push(&tmplNode{
+		_ = ctx.Push(&tmplNode{
 			typ: nodeTypeBranch,
 		})
 
-		p.PushState(
+		ctx.PushState(
 			// Parse the conditional expression.  Currently only a simple
 			// variable is supported.
 			lexparse.ParseStateFn(parseVar),
@@ -317,25 +317,25 @@ func parseBranch(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseIf handles the if body.
-func parseIf(_ context.Context, p *lexparse.Parser[*tmplNode]) error {
+func parseIf(ctx *lexparse.ParserContext[*tmplNode]) error {
 	// Add an if body sequence node.
-	_ = p.Push(&tmplNode{
+	_ = ctx.Push(&tmplNode{
 		typ: nodeTypeSeq,
 	})
 
-	p.PushState(lexparse.ParseStateFn(parseSeq))
+	ctx.PushState(lexparse.ParseStateFn(parseSeq))
 
 	return nil
 }
 
 // parseElse handles an else (or endif) block.
-func parseElse(ctx context.Context, parser *lexparse.Parser[*tmplNode]) error {
-	token := parser.Peek(ctx)
+func parseElse(ctx *lexparse.ParserContext[*tmplNode]) error {
+	token := ctx.Peek()
 
 	switch token.Type {
 	case lexTypeIdentifier:
 		// Validate we are at a sequence node.
-		if cur := parser.Pos(); cur.Value.typ != nodeTypeSeq {
+		if cur := ctx.Pos(); cur.Value.typ != nodeTypeSeq {
 			return lexTokenErr(errIdentifier, token)
 		}
 	case lexparse.TokenTypeEOF:
@@ -347,22 +347,22 @@ func parseElse(ctx context.Context, parser *lexparse.Parser[*tmplNode]) error {
 	switch token.Value {
 	case tokenElse:
 		// Consume the token.
-		_ = parser.Next(ctx)
+		_ = ctx.Next()
 
 		// Climb the tree back to the conditional.
-		parser.Climb()
+		ctx.Climb()
 
 		// Validate that we are in a conditional and there isn't already an else branch.
-		if cur := parser.Pos(); cur.Value.typ != nodeTypeBranch || len(cur.Children) != 2 {
+		if cur := ctx.Pos(); cur.Value.typ != nodeTypeBranch || len(cur.Children) != 2 {
 			return lexTokenErr(errIdentifier, token)
 		}
 
 		// Add an else sequence node to the conditional.
-		_ = parser.Push(&tmplNode{
+		_ = ctx.Push(&tmplNode{
 			typ: nodeTypeSeq,
 		})
 
-		parser.PushState(
+		ctx.PushState(
 			// Parse the '%}'
 			lexparse.ParseStateFn(parseBlockEnd),
 
@@ -373,7 +373,7 @@ func parseElse(ctx context.Context, parser *lexparse.Parser[*tmplNode]) error {
 			lexparse.ParseStateFn(parseEndif),
 		)
 	case tokenEndif:
-		parser.PushState(lexparse.ParseStateFn(parseEndif))
+		ctx.PushState(lexparse.ParseStateFn(parseEndif))
 	default:
 		return lexTokenErr(fmt.Errorf("%w: looking for %q or %q", errIdentifier, tokenElse, tokenEndif), token)
 	}
@@ -382,20 +382,20 @@ func parseElse(ctx context.Context, parser *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseEndif handles either an endif block.
-func parseEndif(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	switch token := p.Next(ctx); token.Type {
+func parseEndif(ctx *lexparse.ParserContext[*tmplNode]) error {
+	switch token := ctx.Next(); token.Type {
 	case lexTypeIdentifier:
 		if token.Value != tokenEndif {
 			return lexTokenErr(fmt.Errorf("%w: looking for %q", errIdentifier, tokenEndif), token)
 		}
 
 		// Climb out of the sequence node.
-		p.Climb()
+		ctx.Climb()
 
 		// Climb out of the branch node.
-		p.Climb()
+		ctx.Climb()
 
-		p.PushState(
+		ctx.PushState(
 			// parse the '%}'
 			lexparse.ParseStateFn(parseBlockEnd),
 
@@ -412,9 +412,9 @@ func parseEndif(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
 }
 
 // parseBlockStart handles the start of a template block '{%'.
-func parseBlockStart(ctx context.Context, parser *lexparse.Parser[*tmplNode]) error {
+func parseBlockStart(ctx *lexparse.ParserContext[*tmplNode]) error {
 	// Validate the block start token.
-	switch token := parser.Next(ctx); token.Type {
+	switch token := ctx.Next(); token.Type {
 	case lexTypeBlockStart:
 		// OK
 		fmt.Fprintln(os.Stderr, token.Value)
@@ -425,7 +425,7 @@ func parseBlockStart(ctx context.Context, parser *lexparse.Parser[*tmplNode]) er
 	}
 
 	// Validate the command token.
-	token := parser.Peek(ctx)
+	token := ctx.Peek()
 	switch token.Type {
 	case lexTypeIdentifier:
 		// OK
@@ -439,7 +439,7 @@ func parseBlockStart(ctx context.Context, parser *lexparse.Parser[*tmplNode]) er
 	// Handle the block command.
 	switch token.Value {
 	case tokenIf:
-		parser.PushState(lexparse.ParseStateFn(parseBranch))
+		ctx.PushState(lexparse.ParseStateFn(parseBranch))
 	case tokenElse, tokenEndif:
 		// NOTE: parseElse,parseEndif should already be on the stack.
 	default:
@@ -451,8 +451,8 @@ func parseBlockStart(ctx context.Context, parser *lexparse.Parser[*tmplNode]) er
 }
 
 // parseBlockEnd handles the end of a template block '%}'.
-func parseBlockEnd(ctx context.Context, p *lexparse.Parser[*tmplNode]) error {
-	switch token := p.Next(ctx); token.Type {
+func parseBlockEnd(ctx *lexparse.ParserContext[*tmplNode]) error {
+	switch token := ctx.Next(); token.Type {
 	case lexTypeBlockEnd:
 		return nil
 	case lexparse.TokenTypeEOF:

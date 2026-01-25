@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored `CustomLexer` to add a new `CustomLexerContext` type that is passed
   to state functions. This context provides access to the underlying `Lexer`
   as well as additional helper methods for lexing.
+- Refactored `Parser` to add a new `ParserContext` type that is passed
+  to state functions. This context provides access to the underlying `Parser`
+  as well as additional helper methods for parsing.
 
 ## [0.2.0] - 2025-10-31
 
