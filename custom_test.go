@@ -948,7 +948,7 @@ func TestCustomLexer_NextToken(t *testing.T) {
 			t.Errorf("Err (-want +got):\n%s", diff)
 		}
 
-		if diff := cmp.Diff(io.EOF, customLexer.Err(), cmpopts.EquateErrors()); diff != "" {
+		if diff := cmp.Diff(nil, customLexer.Err(), cmpopts.EquateErrors()); diff != "" {
 			t.Errorf("Err (-want +got):\n%s", diff)
 		}
 	})
