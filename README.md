@@ -63,6 +63,25 @@ type Lexer interface {
 }
 ```
 
+### Invoking a `Lexer`
+
+The `Lexer` can be invoked by repeatedly calling the `NextToken` method
+until an end-of-file token is returned. After lexing is complete, the `Err`
+method should be called to check for any errors that may have occurred during
+lexing.
+
+```go
+t := &lexparse.Token{}
+ctx := context.Background()
+for t.Type != lexparse.TokenTypeEOF {
+    t = lexer.NextToken(ctx)
+    fmt.Printf("%s\n", t)
+}
+if err := lexer.Err(); err != nil {
+    panic(err)
+}
+```
+
 ## `ScanningLexer`
 
 The `ScanningLexer` implements the `Lexer` interface using Go's built-in
@@ -109,9 +128,9 @@ in addition to the underlying reader's position. When the token has been fully
 processed it can be emitted to a channel for further processing by the `Parser`.
 
 Developers implement the token processing portion of the lexer by implementing
-`LexState` interface for each relevant lexer state. `CustomLexer` is passed to
-each `LexState` during processing and includes a number of methods that can be
-used to advance through the input text.
+`LexState` interface for each relevant lexer state. A `CustomLexerContext` is
+passed to each `LexState` during processing and includes a number of methods
+that can be used to advance through the input text.
 
 For example, consider the following simple template language.
 
@@ -190,7 +209,7 @@ type LexState interface {
     // Run returns the next state to transition to or an error. If the returned
     // next state is nil or the returned error is io.EOF then the Lexer
     // finishes processing normally.
-    Run(context.Context, *Lexer) (LexState, error)
+    Run(*CustomLexerContext) (LexState, error)
 }
 ```
 
@@ -217,23 +236,23 @@ advancing over the text.
 
 ```go
 // lexText tokenizes normal text.
-func lexText(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, error) {
+func lexText(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
     for {
-        p := l.PeekN(2)
+        p := ctx.PeekN(2)
         switch string(p) {
         case tokenBlockStart, tokenVarStart:
-            if l.Width() > 0 {
-                l.Emit(lexTypeText)
+            if ctx.Width() > 0 {
+                ctx.Emit(lexTypeText)
             }
             return lexparse.LexStateFn(lexCode), nil
         default:
         }
 
         // Advance the input.
-        if !l.Advance() {
+        if !ctx.Advance() {
             // End of input. Emit the text up to this point.
-            if l.Width() > 0 {
-                l.Emit(lexTypeText)
+            if ctx.Width() > 0 {
+                ctx.Emit(lexTypeText)
             }
             return nil, nil
         }
@@ -244,26 +263,6 @@ func lexText(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, err
 Each state can be implemented this way to complete the `CustomLexer` logic. You
 can find a full working example in
 [`template_example_test.go`](./template_example_test.go).
-
-### Invoking the `CustomLexer`
-
-The `CustomLexer` is initialized with a starting state, a channel to send tokens
-to, and a reader for the input.
-
-```go
-r := strings.NewReader(textString)
-l := lexparse.NewCustomLexer(r, initState)
-
-t := &lexparse.Token{}
-ctx := context.Background()
-for t.Type != lexparse.TokenTypeEOF {
-    t = l.NextToken(ctx)
-    fmt.Printf("%s\n", t)
-}
-if err := l.Err(); err != nil {
-    panic(err)
-}
-```
 
 ## Parsing API
 
@@ -325,7 +324,10 @@ flowchart-elk TD
 
 Similar to the lexer API, each parser state is represented by an object
 implementing the `ParseState` interface. It contains only a single `Run` method
-which handles processing input tokens while in that state.
+which handles processing input tokens while in that state. A `ParserContext` is
+passed to each `ParseState` during processing and includes a number of methods
+that can be used to examine the current token, advance to the next token, and
+manipulate the AST.
 
 ```go
 // ParseState is the state of the current parsing state machine. It defines the
@@ -334,7 +336,7 @@ type ParseState[V comparable] interface {
     // Run returns the next state to transition to or an error. If the returned
     // next state is nil or the returned error is io.EOF then the Lexer
     // finishes processing normally.
-    Run(context.Context, *Parser[V]) (ParseState[V], error)
+    Run(*ParserContext[V]) (ParseState[V], error)
 }
 ```
 
@@ -373,16 +375,16 @@ Here we push the later relevant expected state onto the parser's stack.
 
 ```go
 // parseSeq delegates to another parse function based on token type.
-func parseSeq(_ context.Context, p *lexparse.Parser[*tmplNode]) error {
-    token := p.Peek()
+func parseSeq(ctx *lexparse.ParserContext[*tmplNode]) error {
+    token := ctx.Peek()
 
     switch token.Type {
     case lexTypeText:
-        p.PushState(lexparse.ParseStateFn(parseText))
+        ctx.PushState(lexparse.ParseStateFn(parseText))
     case lexTypeVarStart:
-        p.PushState(lexparse.ParseStateFn(parseVarStart))
+        ctx.PushState(lexparse.ParseStateFn(parseVarStart))
     case lexTypeBlockStart:
-        p.PushState(lexparse.ParseStateFn(parseBlockStart))
+        ctx.PushState(lexparse.ParseStateFn(parseBlockStart))
     }
 
     return nil
@@ -395,11 +397,11 @@ are pushed in reverse order so that they are handled in the order listed.
 
 ```go
 // parseVarStart handles var start (e.g. '{{').
-func parseVarStart(_ context.Context, p *lexparse.Parser[*tmplNode]) error {
+func parseVarStart(ctx *lexparse.ParserContext[*tmplNode]) error {
     // Consume the var start token.
-    _ = p.Next()
+    _ = ctx.Next()
 
-    p.PushState(
+    ctx.PushState(
         lexparse.ParseStateFn(parseVar),
         lexparse.ParseStateFn(parseVarEnd),
     )
@@ -437,7 +439,7 @@ go func() {
     close(tokens)
 }()
 
-if err := parser.Parse(context.Background); err != nil {
+if err := parser.Parse(context.Background()); err != nil {
     panic(err)
 }
 ```
