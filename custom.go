@@ -212,8 +212,6 @@ func (l *CustomLexer) NextToken(ctx context.Context) *Token {
 
 	// The state is nil and we have no tokens to return, so we are at the end
 	// of the input.
-	l.err = io.EOF
-
 	return l.newToken(TokenTypeEOF)
 }
 
@@ -455,6 +453,8 @@ func (l *CustomLexer) Emit(typ TokenType) *Token {
 	return token
 }
 
+// newToken creates a new token starting from the current cursor position to the
+// current reader position.
 func (l *CustomLexer) newToken(typ TokenType) *Token {
 	return &Token{
 		Type:  typ,
