@@ -91,22 +91,22 @@ func lexTokenErr(err error, t *lexparse.Token) error {
 // lexText tokenizes normal text.
 //
 //nolint:ireturn // returning interface is required to satisfy lexparse.LexState.
-func lexText(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, error) {
+func lexText(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
 	for {
-		p := string(l.PeekN(2))
+		p := string(ctx.PeekN(2))
 		if p == tokenBlockStart || p == tokenVarStart {
-			if l.Width() > 0 {
-				l.Emit(lexTypeText)
+			if ctx.Width() > 0 {
+				ctx.Emit(lexTypeText)
 			}
 
 			return lexparse.LexStateFn(lexCode), nil
 		}
 
 		// Advance the input.
-		if !l.Advance() {
+		if !ctx.Advance() {
 			// End of input. Emit the text up to this point.
-			if l.Width() > 0 {
-				l.Emit(lexTypeText)
+			if ctx.Width() > 0 {
+				ctx.Emit(lexTypeText)
 			}
 
 			return nil, io.EOF
@@ -117,17 +117,17 @@ func lexText(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, err
 // lexCode tokenizes template code.
 //
 //nolint:ireturn // returning interface is required to satisfy lexparse.LexState.
-func lexCode(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, error) {
+func lexCode(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
 	// Consume whitespace and discard it.
 	// TODO(#94): use backtracking
-	for unicode.IsSpace(l.Peek()) {
-		if !l.Discard() {
+	for unicode.IsSpace(ctx.Peek()) {
+		if !ctx.Discard() {
 			// End of input
 			return nil, io.EOF
 		}
 	}
 
-	rn := l.Peek()
+	rn := ctx.Peek()
 	switch {
 	case idenRegexp.MatchString(string(rn)):
 		return lexparse.LexStateFn(lexIden), nil
@@ -135,21 +135,21 @@ func lexCode(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, err
 		return lexparse.LexStateFn(lexSymbol), nil
 	default:
 		return nil, fmt.Errorf("%w: %q; line: %d, column: %d", errRune,
-			rn, l.Pos().Line, l.Pos().Column)
+			rn, ctx.Pos().Line, ctx.Pos().Column)
 	}
 }
 
 // lexIden tokenizes identifiers (e.g. variable names).
 //
 //nolint:ireturn // returning interface is required to satisfy lexparse.LexState.
-func lexIden(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, error) {
+func lexIden(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
 	for {
-		if rn := l.Peek(); !idenRegexp.MatchString(string(rn)) {
-			l.Emit(lexTypeIdentifier)
+		if rn := ctx.Peek(); !idenRegexp.MatchString(string(rn)) {
+			ctx.Emit(lexTypeIdentifier)
 			return lexparse.LexStateFn(lexCode), nil
 		}
 
-		if !l.Advance() {
+		if !ctx.Advance() {
 			return nil, io.EOF
 		}
 	}
@@ -158,29 +158,29 @@ func lexIden(_ context.Context, l *lexparse.CustomLexer) (lexparse.LexState, err
 // lexSymbol tokenizes template symbols (e.g. {%, {{, }}, %}).
 //
 //nolint:ireturn // returning interface is required to satisfy lexparse.LexState.
-func lexSymbol(_ context.Context, customLexer *lexparse.CustomLexer) (lexparse.LexState, error) {
+func lexSymbol(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
 	for {
-		switch customLexer.Token() {
+		switch ctx.Token() {
 		case tokenVarStart:
-			customLexer.Emit(lexTypeVarStart)
+			ctx.Emit(lexTypeVarStart)
 			return lexparse.LexStateFn(lexCode), nil
 		case tokenVarEnd:
-			customLexer.Emit(lexTypeVarEnd)
+			ctx.Emit(lexTypeVarEnd)
 			return lexparse.LexStateFn(lexText), nil
 		case tokenBlockStart:
-			customLexer.Emit(lexTypeBlockStart)
+			ctx.Emit(lexTypeBlockStart)
 			return lexparse.LexStateFn(lexCode), nil
 		case tokenBlockEnd:
-			customLexer.Emit(lexTypeBlockEnd)
+			ctx.Emit(lexTypeBlockEnd)
 			return lexparse.LexStateFn(lexText), nil
 		default:
-			if rn := customLexer.Peek(); !symbolRegexp.MatchString(string(rn)) {
+			if rn := ctx.Peek(); !symbolRegexp.MatchString(string(rn)) {
 				return nil, fmt.Errorf("symbol: %w: %q; line: %d, column: %d",
-					errRune, rn, customLexer.Pos().Line, customLexer.Pos().Column)
+					errRune, rn, ctx.Pos().Line, ctx.Pos().Column)
 			}
 		}
 
-		if !customLexer.Advance() {
+		if !ctx.Advance() {
 			return nil, io.EOF
 		}
 	}

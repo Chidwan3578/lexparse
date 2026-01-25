@@ -48,8 +48,7 @@ func TestScannerLexParse(t *testing.T) {
 
 		r := strings.NewReader("Hello\nWorld")
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		l := NewScanningLexer(r)
 
@@ -116,7 +115,7 @@ var (
 type lexErrState struct{}
 
 //nolint:ireturn // returning interface is required to satisfy LexState.
-func (e *lexErrState) Run(context.Context, *CustomLexer) (LexState, error) {
+func (e *lexErrState) Run(*CustomLexerContext) (LexState, error) {
 	return nil, errState
 }
 
@@ -135,8 +134,7 @@ func TestCustomLexParse(t *testing.T) {
 
 		r := strings.NewReader("Hello\nWorld!")
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		l := NewCustomLexer(r, &lexWordState{})
 
@@ -184,8 +182,7 @@ func TestCustomLexParse(t *testing.T) {
 
 		r := strings.NewReader("Hello\nWorld!")
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		l := NewCustomLexer(r, &lexErrState{})
 		_, got := LexParse(ctx, l, &parseErrState{})
@@ -202,8 +199,7 @@ func TestCustomLexParse(t *testing.T) {
 
 		r := strings.NewReader("Hello\nWorld!")
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		l := NewCustomLexer(r, &lexWordState{})
 		_, got := LexParse(ctx, l, &parseErrState{})

@@ -87,12 +87,12 @@ var (
 // lexINI is the initial lexer state for INI files.
 //
 //nolint:ireturn // returning the generic interface is needed to return the previous value.
-func lexINI(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexState, error) {
+func lexINI(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
 	for {
-		rn := lexer.Peek()
+		rn := ctx.Peek()
 		switch rn {
 		case ' ', '\t', '\r', '\n':
-			lexer.Discard()
+			ctx.Discard()
 		case '[', ']', '=':
 			return lexparse.LexStateFn(lexINIOper), nil
 		case ';', '#':
@@ -108,9 +108,9 @@ func lexINI(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexState, 
 // lexINIOper lexes an operator token.
 //
 //nolint:ireturn // returning the generic interface is needed to return the previous value.
-func lexINIOper(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexState, error) {
-	oper := lexer.NextRune()
-	lexer.Emit(lexINITypeOper)
+func lexINIOper(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
+	oper := ctx.NextRune()
+	ctx.Emit(lexINITypeOper)
 
 	if oper == '=' {
 		return lexparse.LexStateFn(lexINIValue), nil
@@ -122,9 +122,9 @@ func lexINIOper(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexSta
 // lexINIIden lexes an identifier token (section name or property key).
 //
 //nolint:ireturn // returning the generic interface is needed to return the previous value.
-func lexINIIden(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexState, error) {
-	if next := lexer.Find([]string{"]", "="}); next != "" {
-		lexer.Emit(lexINITypeIden)
+func lexINIIden(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
+	if next := ctx.Find([]string{"]", "="}); next != "" {
+		ctx.Emit(lexINITypeIden)
 		return lexparse.LexStateFn(lexINIOper), nil
 	}
 
@@ -134,9 +134,9 @@ func lexINIIden(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexSta
 // lexINIValue lexes a property value token.
 //
 //nolint:ireturn // returning the generic interface is needed to return the previous value.
-func lexINIValue(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexState, error) {
-	lexer.Find([]string{";", "\n"})
-	lexer.Emit(lexINITypeValue)
+func lexINIValue(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
+	ctx.Find([]string{";", "\n"})
+	ctx.Emit(lexINITypeValue)
 
 	return lexparse.LexStateFn(lexINI), nil
 }
@@ -144,9 +144,9 @@ func lexINIValue(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexSt
 // lexINIComment lexes a comment token.
 //
 //nolint:ireturn // returning the generic interface is needed to return the previous value.
-func lexINIComment(_ context.Context, lexer *lexparse.CustomLexer) (lexparse.LexState, error) {
-	lexer.Find([]string{"\n"})
-	lexer.Emit(lexINITypeComment)
+func lexINIComment(ctx *lexparse.CustomLexerContext) (lexparse.LexState, error) {
+	ctx.Find([]string{"\n"})
+	ctx.Emit(lexINITypeComment)
 
 	return lexparse.LexStateFn(lexINI), nil
 }
