@@ -239,7 +239,7 @@ func Example_infixCalculator() {
 	}
 
 	// Print the expression tree.
-	fmt.Print(tree)
+	fmt.Println(tree)
 
 	txt, err := Calculate(tree)
 	if err != nil {
@@ -259,5 +259,6 @@ func Example_infixCalculator() {
 	// │       │   └── 3.2 (1:15)
 	// │       └── 7.6 (1:23)
 	// └── 2.4 (1:29)
+	//
 	// 2.4157894736842107
 }
