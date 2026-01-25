@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"text/scanner"
 )
 
@@ -62,12 +63,22 @@ type ScanningLexer struct {
 // NewScanningLexer creates a new ScanningLexer that reads from the given
 // [io.Reader].
 func NewScanningLexer(r io.Reader) *ScanningLexer {
+	var fileName string
+
+	file, ok := r.(*os.File)
+	if ok {
+		fileName = file.Name()
+	}
+
 	l := ScanningLexer{}
 	l.s = &scanner.Scanner{
 		Error: func(s *scanner.Scanner, msg string) {
 			if l.err == nil {
 				l.err = fmt.Errorf("%w: %s: %s", errScanner, s.Position, msg)
 			}
+		},
+		Position: scanner.Position{
+			Filename: fileName,
 		},
 	}
 	l.s = l.s.Init(r)
@@ -101,4 +112,9 @@ func (l *ScanningLexer) newToken(typ TokenType) *Token {
 		Start: Position(l.s.Position),
 		End:   Position(l.s.Pos()),
 	}
+}
+
+// SetFilename sets the filename in the lexer's positional information.
+func (l *ScanningLexer) SetFilename(name string) {
+	l.s.Filename = name
 }

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/ianlewis/runeio"
@@ -87,25 +88,34 @@ type CustomLexer struct {
 // NewCustomLexer creates a new Lexer initialized with the given starting
 // [LexState]. The Lexer takes ownership of the tokens channel and closes it
 // when lexing is completed.
-func NewCustomLexer(r io.Reader, startingState LexState) *CustomLexer {
+func NewCustomLexer(reader io.Reader, startingState LexState) *CustomLexer {
+	var fileName string
+
+	file, isFile := reader.(*os.File)
+	if isFile {
+		fileName = file.Name()
+	}
+
 	customLexer := &CustomLexer{
 		state: startingState,
 		pos: Position{
-			Offset: 0,
-			Line:   1,
-			Column: 1,
+			Filename: fileName,
+			Offset:   0,
+			Line:     1,
+			Column:   1,
 		},
 		cursor: Position{
-			Offset: 0,
-			Line:   1,
-			Column: 1,
+			Filename: fileName,
+			Offset:   0,
+			Line:     1,
+			Column:   1,
 		},
 	}
 
 	// If already a *bufio.Reader, use it directly.
-	br, ok := r.(*bufio.Reader)
-	if !ok {
-		br = bufio.NewReader(r)
+	br, isBufReader := reader.(*bufio.Reader)
+	if !isBufReader {
+		br = bufio.NewReader(reader)
 	}
 
 	customLexer.r = runeio.NewReader(br)
@@ -463,4 +473,10 @@ func (l *CustomLexer) setErr(err error) {
 	if l.err == nil && !errors.Is(err, io.EOF) {
 		l.err = err
 	}
+}
+
+// SetFilename sets the filename in the lexer's positional information.
+func (l *CustomLexer) SetFilename(name string) {
+	l.pos.Filename = name
+	l.cursor.Filename = name
 }

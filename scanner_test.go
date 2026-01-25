@@ -160,3 +160,37 @@ func TestScannerLexer_NextToken(t *testing.T) {
 		})
 	}
 }
+
+func TestScanningLexer_SetFilename(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SetFilename", func(t *testing.T) {
+		t.Parallel()
+
+		customLexer := NewScanningLexer(strings.NewReader("Hello World!"))
+		customLexer.SetFilename("testfile.txt")
+
+		expectedToken := &Token{
+			Type:  TokenType(scanner.Ident),
+			Value: "Hello",
+			Start: Position{
+				Offset:   0,
+				Line:     1,
+				Column:   1,
+				Filename: "testfile.txt",
+			},
+			End: Position{
+				Offset:   5,
+				Line:     1,
+				Column:   6,
+				Filename: "testfile.txt",
+			},
+		}
+
+		token := customLexer.NextToken(context.Background())
+
+		if diff := cmp.Diff(expectedToken, token); diff != "" {
+			t.Errorf("Pos (-want +got):\n%s", diff)
+		}
+	})
+}

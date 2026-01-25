@@ -953,3 +953,36 @@ func TestCustomLexer_NextToken(t *testing.T) {
 		}
 	})
 }
+
+func TestCustomLexer_SetFilename(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SetFilename", func(t *testing.T) {
+		t.Parallel()
+
+		customLexer := NewCustomLexer(strings.NewReader("Hello World!"), &lexWordState{})
+		customLexer.SetFilename("testfile.txt")
+
+		expectedPos := Position{
+			Offset:   0,
+			Line:     1,
+			Column:   1,
+			Filename: "testfile.txt",
+		}
+
+		if diff := cmp.Diff(expectedPos, customLexer.Pos()); diff != "" {
+			t.Errorf("Pos (-want +got):\n%s", diff)
+		}
+
+		expectedCursor := Position{
+			Offset:   0,
+			Line:     1,
+			Column:   1,
+			Filename: "testfile.txt",
+		}
+
+		if diff := cmp.Diff(expectedCursor, customLexer.Cursor()); diff != "" {
+			t.Errorf("Cursor (-want +got):\n%s", diff)
+		}
+	})
+}
