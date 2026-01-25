@@ -48,9 +48,9 @@ func (tc *tokenChan) NextToken(ctx context.Context) *Token {
 	return <-tc.c
 }
 
-// LexParse lexes the content the given lexer and feeds the tokens to the
-// parser starting at startingState. The resulting root node of the parse tree
-// is returned.
+// LexParse lexes the content the given lexer and feeds the tokens concurrently
+// to the parser starting at startingState. The resulting root node of the parse
+// tree is returned.
 func LexParse[V comparable](
 	ctx context.Context,
 	lex Lexer,
