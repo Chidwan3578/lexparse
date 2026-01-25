@@ -84,6 +84,21 @@ type tmplNode struct {
 	text    string
 }
 
+func (n *tmplNode) String() string {
+	switch n.typ {
+	case nodeTypeSeq:
+		return "[]"
+	case nodeTypeText:
+		return fmt.Sprintf("%q", n.text)
+	case nodeTypeBranch:
+		return "if/else"
+	case nodeTypeVar:
+		return fmt.Sprintf("{{%s}}", n.varName)
+	default:
+		return "<Unknown>"
+	}
+}
+
 func lexTokenErr(err error, t *lexparse.Token) error {
 	return fmt.Errorf("%w: %s", err, t)
 }
@@ -537,7 +552,7 @@ func execNode(root *lexparse.Node[*tmplNode], data map[string]string, bldr *stri
 func Example_templateEngine() {
 	r := strings.NewReader(`Hello, {% if subject %}{{ subject }}{% else %}World{% endif %}!`)
 
-	t, err := lexparse.LexParse(
+	tree, err := lexparse.LexParse(
 		context.Background(),
 		lexparse.NewCustomLexer(r, lexparse.LexStateFn(lexText)),
 		lexparse.ParseStateFn(parseRoot),
@@ -546,12 +561,25 @@ func Example_templateEngine() {
 		panic(err)
 	}
 
-	txt, err := Execute(t, map[string]string{"subject": "世界"})
+	fmt.Println(tree)
+
+	txt, err := Execute(tree, map[string]string{"subject": "世界"})
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Print(txt)
 
-	// Output: Hello, 世界!
+	// Output:
+	// [] (0:0)
+	// ├── "Hello, " (1:1)
+	// ├── if/else (1:11)
+	// │   ├── {{subject}} (1:14)
+	// │   ├── [] (1:22)
+	// │   │   └── {{subject}} (1:27)
+	// │   └── [] (1:40)
+	// │       └── "World" (1:47)
+	// └── "!" (1:63)
+	//
+	// Hello, 世界!
 }
