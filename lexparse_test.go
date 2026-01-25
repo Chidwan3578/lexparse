@@ -15,7 +15,6 @@
 package lexparse
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -26,11 +25,11 @@ import (
 
 type parseTokenState struct{}
 
-func (w *parseTokenState) Run(ctx context.Context, p *Parser[string]) error {
-	switch token := p.Next(ctx); token.Type {
+func (w *parseTokenState) Run(ctx *ParserContext[string]) error {
+	switch token := ctx.Next(); token.Type {
 	case TokenTypeIdent:
-		p.Node(token.Value)
-		p.PushState(w)
+		ctx.Node(token.Value)
+		ctx.PushState(w)
 
 		return nil
 	case TokenTypeEOF:
@@ -93,11 +92,11 @@ func TestScannerLexParse(t *testing.T) {
 
 type parseWordState struct{}
 
-func (w *parseWordState) Run(ctx context.Context, p *Parser[string]) error {
-	switch token := p.Next(ctx); token.Type {
+func (w *parseWordState) Run(ctx *ParserContext[string]) error {
+	switch token := ctx.Next(); token.Type {
 	case wordType:
-		p.Node(token.Value)
-		p.PushState(w)
+		ctx.Node(token.Value)
+		ctx.PushState(w)
 
 		return nil
 	case TokenTypeEOF:
@@ -121,8 +120,8 @@ func (e *lexErrState) Run(*CustomLexerContext) (LexState, error) {
 
 type parseErrState struct{}
 
-func (e *parseErrState) Run(ctx context.Context, p *Parser[string]) error {
-	_ = p.Next(ctx)
+func (e *parseErrState) Run(ctx *ParserContext[string]) error {
+	_ = ctx.Next()
 	return errParse
 }
 

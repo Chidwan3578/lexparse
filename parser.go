@@ -74,24 +74,24 @@ type ParseState[V comparable] interface {
 	// encountered. Implementations are expected to add new [Node] objects to
 	// the AST using [Parser.Push] or [Parser.Node). As necessary, new parser
 	// state should be pushed onto the stack as needed using [Parser.PushState].
-	Run(ctx context.Context, p *Parser[V]) error
+	Run(ctx *ParserContext[V]) error
 }
 
 type parseFnState[V comparable] struct {
-	f func(context.Context, *Parser[V]) error
+	f func(*ParserContext[V]) error
 }
 
 // Run implements ParseState.Run.
-func (s *parseFnState[V]) Run(ctx context.Context, p *Parser[V]) error {
+func (s *parseFnState[V]) Run(ctx *ParserContext[V]) error {
 	if s.f == nil {
 		return nil
 	}
 
-	return s.f(ctx, p)
+	return s.f(ctx)
 }
 
 // ParseStateFn creates a State from the given Run function.
-func ParseStateFn[V comparable](f func(context.Context, *Parser[V]) error) ParseState[V] {
+func ParseStateFn[V comparable](f func(*ParserContext[V]) error) ParseState[V] {
 	return &parseFnState[V]{f}
 }
 
@@ -119,6 +119,85 @@ type TokenSource interface {
 	NextToken(ctx context.Context) *Token
 }
 
+// ParserContext provides context for the current parsing operation,
+// including access to the parser state and methods to manipulate the parse
+// tree.
+type ParserContext[V comparable] struct {
+	//nolint:containedctx // Embedding context required for interface compliance.
+	context.Context
+
+	p *Parser[V]
+}
+
+// PushState pushes a number of new expected future states onto the state stack
+// in reverse order.
+func (ctx *ParserContext[V]) PushState(states ...ParseState[V]) {
+	ctx.p.pushState(states...)
+}
+
+// SetRoot sets the root of the parse tree to the given node. The current node
+// is also set to the root node. This is useful for resetting the parser to a
+// new root node.
+func (ctx *ParserContext[V]) SetRoot(root *Node[V]) {
+	ctx.p.setRoot(root)
+}
+
+// Root returns the root of the parse tree.
+func (ctx *ParserContext[V]) Root() *Node[V] {
+	return ctx.p.root
+}
+
+// Peek returns the next token from the lexer without consuming it.
+func (ctx *ParserContext[V]) Peek() *Token {
+	return ctx.p.peek(ctx)
+}
+
+// Next returns the next token from the lexer. This is the new current token
+// position.
+func (ctx *ParserContext[V]) Next() *Token {
+	return ctx.p.nextToken(ctx)
+}
+
+// Pos returns the current node position in the tree.
+func (ctx *ParserContext[V]) Pos() *Node[V] {
+	return ctx.p.node
+}
+
+// Push creates a new node, adds it as a child to the current node, updates
+// the current node to the new node, and returns the new node.
+func (ctx *ParserContext[V]) Push(v V) *Node[V] {
+	return ctx.p.push(v)
+}
+
+// Node creates a new node at the current token position and adds it as a
+// child to the current node. The current node is not updated.
+func (ctx *ParserContext[V]) Node(v V) *Node[V] {
+	return ctx.p.addNodeHere(v)
+}
+
+// NewNode creates a new node at the current token position and returns it
+// without adding it to the tree.
+func (ctx *ParserContext[V]) NewNode(v V) *Node[V] {
+	return ctx.p.newNode(v)
+}
+
+// Climb updates the current node position to the current node's parent
+// returning the previous current node. It is a no-op that returns the root
+// node if called on the root node. Updates the end position of the parent node
+// to the end position of the current node.
+func (ctx *ParserContext[V]) Climb() *Node[V] {
+	return ctx.p.climb()
+}
+
+// Replace replaces the current node with a new node with the given value. The
+// old node is removed from the tree and its value is returned. Can be used to
+// replace the root node.
+//
+//nolint:ireturn // returning the generic interface is needed to return the previous value.
+func (ctx *ParserContext[V]) Replace(v V) V {
+	return ctx.p.replace(v)
+}
+
 // NewParser creates a new Parser that reads from the tokens channel. The
 // parser is initialized with a root node with an empty value.
 func NewParser[V comparable](tokens TokenSource, startingState ParseState[V]) *Parser[V] {
@@ -136,7 +215,7 @@ func NewParser[V comparable](tokens TokenSource, startingState ParseState[V]) *P
 	p.root = root
 	p.node = root
 
-	p.PushState(startingState)
+	p.pushState(startingState)
 
 	return p
 }
@@ -173,6 +252,11 @@ type Parser[V comparable] struct {
 //
 // The caller can request that the parser stop by canceling ctx.
 func (p *Parser[V]) Parse(ctx context.Context) (*Node[V], error) {
+	parserCtx := &ParserContext[V]{
+		Context: ctx,
+		p:       p,
+	}
+
 	for {
 		state := p.stateStack.pop()
 		if state == nil {
@@ -191,7 +275,7 @@ func (p *Parser[V]) Parse(ctx context.Context) (*Node[V], error) {
 		}
 
 		var err error
-		if err = state.Run(ctx, p); err != nil {
+		if err = state.Run(parserCtx); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -204,29 +288,18 @@ func (p *Parser[V]) Parse(ctx context.Context) (*Node[V], error) {
 	return p.root, nil
 }
 
-// PushState pushes a number of new expected future states onto the state stack
-// in reverse order.
-func (p *Parser[V]) PushState(states ...ParseState[V]) {
+func (p *Parser[V]) pushState(states ...ParseState[V]) {
 	for i := len(states) - 1; i >= 0; i-- {
 		p.stateStack.push(states[i])
 	}
 }
 
-// SetRoot sets the root of the parse tree to the given node. The current node
-// is also set to the root node. This is useful for resetting the parser to a
-// new root node.
-func (p *Parser[V]) SetRoot(root *Node[V]) {
+func (p *Parser[V]) setRoot(root *Node[V]) {
 	p.root = root
 	p.node = root
 }
 
-// Root returns the root of the parse tree.
-func (p *Parser[V]) Root() *Node[V] {
-	return p.root
-}
-
-// Peek returns the next token from the lexer without consuming it.
-func (p *Parser[V]) Peek(ctx context.Context) *Token {
+func (p *Parser[V]) peek(ctx context.Context) *Token {
 	if p.next != nil {
 		return p.next
 	}
@@ -236,41 +309,28 @@ func (p *Parser[V]) Peek(ctx context.Context) *Token {
 	return p.next
 }
 
-// Next returns the next token from the lexer. This is the new current token
-// position.
-func (p *Parser[V]) Next(ctx context.Context) *Token {
-	l := p.Peek(ctx)
+func (p *Parser[V]) nextToken(ctx context.Context) *Token {
+	l := p.peek(ctx)
 	p.next = nil
 	p.token = l
 
 	return p.token
 }
 
-// Pos returns the current node position in the tree.
-func (p *Parser[V]) Pos() *Node[V] {
+func (p *Parser[V]) push(v V) *Node[V] {
+	p.node = p.addNodeHere(v)
 	return p.node
 }
 
-// Push creates a new node, adds it as a child to the current node, updates
-// the current node to the new node, and returns the new node.
-func (p *Parser[V]) Push(v V) *Node[V] {
-	p.node = p.Node(v)
-	return p.node
-}
-
-// Node creates a new node at the current token position and adds it as a
-// child to the current node. The current node is not updated.
-func (p *Parser[V]) Node(v V) *Node[V] {
-	n := p.NewNode(v)
+func (p *Parser[V]) addNodeHere(v V) *Node[V] {
+	n := p.newNode(v)
 	p.node.Children = append(p.node.Children, n)
 	n.Parent = p.node
 
 	return n
 }
 
-// NewNode creates a new node at the current token position and returns it
-// without adding it to the tree.
-func (p *Parser[V]) NewNode(v V) *Node[V] {
+func (p *Parser[V]) newNode(v V) *Node[V] {
 	var start Position
 	if p.token != nil {
 		start = p.token.Start
@@ -282,11 +342,7 @@ func (p *Parser[V]) NewNode(v V) *Node[V] {
 	}
 }
 
-// Climb updates the current node position to the current node's parent
-// returning the previous current node. It is a no-op that returns the root
-// node if called on the root node. Updates the end position of the parent node
-// to the end position of the current node.
-func (p *Parser[V]) Climb() *Node[V] {
+func (p *Parser[V]) climb() *Node[V] {
 	n := p.node
 	if p.node.Parent != nil {
 		p.node = p.node.Parent
@@ -295,13 +351,9 @@ func (p *Parser[V]) Climb() *Node[V] {
 	return n
 }
 
-// Replace replaces the current node with a new node with the given value. The
-// old node is removed from the tree and it's value is returned. Can be used to
-// replace the root node.
-//
 //nolint:ireturn // returning the generic interface is needed to return the previous value.
-func (p *Parser[V]) Replace(v V) V {
-	node := p.NewNode(v)
+func (p *Parser[V]) replace(v V) V {
+	node := p.newNode(v)
 
 	// Replace the parent.
 	node.Parent = p.node.Parent
