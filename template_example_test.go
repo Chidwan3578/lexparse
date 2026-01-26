@@ -61,7 +61,8 @@ var (
 type tmplNodeType int
 
 const (
-	// nodeTypeSeq is a node whose children are various text,if,var nodes in order.
+	// nodeTypeSeq is a node whose children are various text, if, var nodes in
+	// order.
 	nodeTypeSeq tmplNodeType = iota
 
 	// nodeTypeText is a leaf node comprised of text.
