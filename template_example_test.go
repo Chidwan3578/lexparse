@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -432,7 +431,6 @@ func parseBlockStart(ctx *lexparse.ParserContext[*tmplNode]) error {
 	switch token := ctx.Next(); token.Type {
 	case lexTypeBlockStart:
 		// OK
-		fmt.Fprintln(os.Stderr, token.Value)
 	case lexparse.TokenTypeEOF:
 		return fmt.Errorf("%w: expected %q", io.ErrUnexpectedEOF, tokenBlockStart)
 	default:
@@ -456,7 +454,7 @@ func parseBlockStart(ctx *lexparse.ParserContext[*tmplNode]) error {
 	case tokenIf:
 		ctx.PushState(lexparse.ParseStateFn(parseBranch))
 	case tokenElse, tokenEndif:
-		// NOTE: parseElse,parseEndif should already be on the stack.
+		// NOTE: parseElse, parseEndif should already be on the stack.
 	default:
 		return lexTokenErr(
 			fmt.Errorf("%w: expected %q, %q, or %q", errIdentifier, tokenIf, tokenElse, tokenEndif), token)
