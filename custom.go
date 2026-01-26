@@ -337,12 +337,14 @@ func (l *CustomLexer) advance(numRunes int, discard bool) int {
 				toRead = numRunes
 			}
 		}
+
 		// Peek at input so we can increment position, line, column counters.
-		peekedRunes, err := l.r.Peek(toRead)
-		if err != nil && !errors.Is(err, io.EOF) {
-			l.setErr(fmt.Errorf("peeking input: %w", err))
+		peekedRunes, peekErr := l.r.Peek(toRead)
+		if peekErr != nil && !errors.Is(peekErr, io.EOF) {
+			l.setErr(fmt.Errorf("peeking input: %w", peekErr))
 			return advanced
 		}
+
 		// Advance by peeked amount.
 		numDiscarded, dErr := l.r.Discard(len(peekedRunes))
 		advanced += numDiscarded
@@ -365,13 +367,12 @@ func (l *CustomLexer) advance(numRunes int, discard bool) int {
 		}
 
 		if dErr != nil {
-			l.setErr(fmt.Errorf("discarding input: %w", err))
+			l.setErr(fmt.Errorf("discarding input: %w", dErr))
 			return advanced
 		}
 
-		if err != nil {
+		if peekErr != nil {
 			// EOF from Peek
-			l.setErr(err)
 			return advanced
 		}
 
