@@ -79,7 +79,7 @@ func (t Token) String() string {
 type Lexer interface {
 	// NextToken returns the next token from the input. If there are no more
 	// tokens, the context is canceled, or an error occurs, it returns a Token
-	// with Type set to TokenTypeEOF.
+	// with Type set to TokenTypeEOF. Lexing can be canceled by ctx.
 	NextToken(ctx context.Context) *Token
 
 	// Err returns the error encountered by the lexer, if any. If the error

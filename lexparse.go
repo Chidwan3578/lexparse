@@ -30,21 +30,16 @@ const channelBufSize = 1024
 // tokenChan implements the [TokenSource] interface by reading tokens from
 // a channel.
 type tokenChan struct {
-	c   chan *Token
-	err error
+	c chan *Token
 }
 
 // NextToken implements [TokenSource.NextToken].
-func (tc *tokenChan) NextToken(ctx context.Context) *Token {
-	// Set the error if the context is done. Note that we do not return here.
-	// The same context is used for the lexer and the lexer should return an EOF
-	// after the context is canceled in that case.
-	select {
-	case <-ctx.Done():
-		tc.err = ctx.Err()
-	default:
-	}
-
+func (tc *tokenChan) NextToken(_ context.Context) *Token {
+	// NOTE: We do not check if the Context is done. The same context is used
+	//       for the lexer and the lexer should return an EOF token after the
+	//       Context is canceled. It is important to return the EOF token from
+	//       the lexer rather than return our own EOF token here to capture the
+	//       Position values of the EOF token.
 	return <-tc.c
 }
 
@@ -66,8 +61,7 @@ func LexParse[V comparable](
 	ctx, cancel := context.WithCancel(ctx)
 
 	tokens := &tokenChan{
-		c:   make(chan *Token, channelBufSize),
-		err: nil,
+		c: make(chan *Token, channelBufSize),
 	}
 
 	p := NewParser(tokens, startingState)
