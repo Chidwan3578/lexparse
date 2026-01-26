@@ -65,10 +65,12 @@ type Lexer interface {
 
 ### Invoking a `Lexer`
 
-The `Lexer` can be invoked by repeatedly calling the `NextToken` method
-until an end-of-file token is returned. After lexing is complete, the `Err`
-method should be called to check for any errors that may have occurred during
-lexing.
+A `Lexer` can be invoked by repeatedly calling the `NextToken` method
+until an end-of-file token is returned. The `NextToken` method takes a
+`context.Context` which can be used to cancel the lexing operation.
+
+After lexing is complete, the `Err` method should be called to check for any
+errors that may have occurred during lexing.
 
 ```go
 t := &lexparse.Token{}
@@ -416,28 +418,29 @@ You can find a full working example in
 
 ### Invoking the `Parser`
 
-The `Parser` is initialized with a channel to receive tokens from, and the
+The `Parser` is initialized with a `TokenSource` to receive tokens from, and the
 initial parser state.
 
+`TokenSource` is an interface that defines a source of tokens for the parser. It
+overlaps with the `Lexer` interface so any `Lexer` implementation can be used as
+a `TokenSource`.
+
 ```go
-tokens := make(chan *lexparse.Token, 1024)
-parser := lexparse.NewParser(tokens, initState),
+// TokenSource is an interface that defines a source of tokens for the parser.
+type TokenSource interface {
+    // NextToken returns the next token from the source. When tokens are
+    // exhausted, it returns a Token with Type set to TokenTypeEOF.
+    NextToken(ctx context.Context) *Token
+}
+```
 
-go func() {
-    // send some tokens to the channel.
-    tokens<-lexparse.Token{
-        Type: tokenTypeText,
-        Value: "some",
-    }
+After initializing the `Parser`, the `Parse` method is called to start parsing.
+The `Parse` method takes a `context.Context` which can be used to cancel the
+parsing operation and returns an error if one occurs during parsing.
 
-    tokens<-lexparse.Token{
-        Type: tokenTypeText,
-        Value: "token",
-    }
-
-    // Close the tokens channel to indicate there are no more tokens.
-    close(tokens)
-}()
+```go
+lexer := lexparse.NewScanningLexer(strings.NewReader("1 + 3"))
+parser := lexparse.NewParser(lexer, initState),
 
 if err := parser.Parse(context.Background()); err != nil {
     panic(err)
@@ -447,7 +450,10 @@ if err := parser.Parse(context.Background()); err != nil {
 ## Invoking the lexer and parser together
 
 A `Lexer` and `Parser` can be used together by calling the `LexParse` function.
-This returns the root node of the abstract syntax tree.
+The `LexParse` function invokes the `Lexer` and `Parser` concurrently and
+returns the resulting root of the abstract syntax tree (AST). The `LexParse`
+function takes a `context.Context` which can be used to cancel the full
+operation.
 
 ```go
 tmpl := `Hello, {% if subject %}{{ subject }}{% else %}World{% endif %}!`
