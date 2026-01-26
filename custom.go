@@ -305,8 +305,8 @@ func (l *CustomLexer) nextRune() rune {
 	return rn
 }
 
-// advance attempts to advance the reader numRunes runes. If discard is true the token
-// cursor position is updated as well.
+// advance attempts to advance the reader numRunes runes. If discard is true
+// then the token cursor position is updated as well.
 func (l *CustomLexer) advance(numRunes int, discard bool) int {
 	if l.err != nil {
 		return 0
@@ -317,6 +317,7 @@ func (l *CustomLexer) advance(numRunes int, discard bool) int {
 	if discard {
 		defer l.ignore()
 	}
+
 	// We will attempt to do a zero-copy read by peeking at no more than what is
 	// currently buffered in the reader operating on a slice that points
 	// directly to the buffer's memory.
@@ -325,20 +326,16 @@ func (l *CustomLexer) advance(numRunes int, discard bool) int {
 
 	for numRunes > 0 {
 		// Determine the number of runes to read.
-		toRead := l.r.Buffered()
-		if numRunes < toRead {
-			toRead = numRunes
-		}
+		toRead := min(l.r.Buffered(), numRunes)
 
 		if toRead == 0 {
-			if minSize < numRunes {
-				toRead = minSize
-			} else {
-				toRead = numRunes
-			}
+			// Nothing is currently buffered. Read at most minSize or numRunes,
+			// whichever is smaller.
+			toRead = min(numRunes, minSize)
 		}
 
-		// Peek at input so we can increment position, line, column counters.
+		// Peek at the input so we can increment the position, line, and column
+		// counters.
 		peekedRunes, peekErr := l.r.Peek(toRead)
 		if peekErr != nil && !errors.Is(peekErr, io.EOF) {
 			l.setErr(fmt.Errorf("peeking input: %w", peekErr))
@@ -349,6 +346,7 @@ func (l *CustomLexer) advance(numRunes int, discard bool) int {
 		numDiscarded, dErr := l.r.Discard(len(peekedRunes))
 		advanced += numDiscarded
 		l.pos.Offset += numDiscarded
+
 		// NOTE: We must be careful since toRead could be different from # of
 		// runes peeked and/or discarded. We will only actually advance by the
 		// number of runes discarded in the underlying reader to maintain
@@ -395,10 +393,7 @@ func (l *CustomLexer) discardTo(query []string) string {
 	}
 
 	for {
-		bufS := l.r.Buffered()
-		if bufS < maxLen {
-			bufS = maxLen
-		}
+		bufS := max(l.r.Buffered(), maxLen)
 
 		// TODO(#94): use backtracking
 		rns := l.peekN(bufS)
