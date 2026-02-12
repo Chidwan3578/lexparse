@@ -466,6 +466,19 @@ tree, err := lexparse.LexParse(
 )
 ```
 
+## Examples
+
+The following examples demonstrate how to use the `lexparse` library for various
+use cases.
+
+- **[Infix Expression Calculator](./infix_example_test.go)**: Demonstrates a [Pratt
+  parser](https://en.wikipedia.org/wiki/Pratt_parser) for mathematical
+  expressions using the `ScanningLexer`.
+- **[INI File Parser](./ini_example_test.go)**: Demonstrates a custom lexer and
+  hierarchical parser for the INI configuration format.
+- **[Template Engine](./template_example_test.go)**: Demonstrates a complex
+  state-machine based lexer and parser for a Jinja-like template language.
+
 ## Similar projects
 
 - [`zalgonoise/lex`]/[`zalgonoise/parse`]: A good library, but uses a custom
